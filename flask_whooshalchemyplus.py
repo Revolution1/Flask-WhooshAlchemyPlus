@@ -16,17 +16,22 @@ from __future__ import print_function
 from __future__ import with_statement
 
 import heapq
+import logging
 import os
+import sys
 
 import flask_sqlalchemy as flask_sqlalchemy
 import sqlalchemy
+import whoosh
 import whoosh.index
+from flask import current_app
+from flask_sqlalchemy import DeclarativeMeta
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from whoosh.analysis import StemmingAnalyzer
 from whoosh.fields import Schema
 from whoosh.qparser import AndGroup
 from whoosh.qparser import MultifieldParser
 from whoosh.qparser import OrGroup
-from whoosh.writing import AsyncWriter
 
 try:
     unicode
@@ -107,7 +112,8 @@ class _QueryProxy(flask_sqlalchemy.BaseQuery):
         parameter to ``True``.
 
         '''
-
+        if not query:
+            return self.filter(sqlalchemy.text('null'))
         if not isinstance(query, unicode):
             query = unicode(query)
 
@@ -129,9 +135,10 @@ class _QueryProxy(flask_sqlalchemy.BaseQuery):
             query_colums = []
             if fields is None:
                 fields = self._whoosh_searcher._index.schema._fields.keys()
-            for clm in set(fields) - set([self._primary_key_name]):
-                query_colums.append(getattr(self._modelclass,
-                                            clm).like(u'%{}%'.format(query)))
+            for clm in set(fields) - {self._primary_key_name}:
+                attr = getattr(self._modelclass, clm)
+                if isinstance(attr, InstrumentedAttribute):
+                    query_colums.append(attr.like(u'%{}%'.format(query)))
             id_tuples = self.filter(sqlalchemy.or_(*query_colums)) \
                 .with_entities(self._primary_key_name).all()
             ids = [unicode(i[0]) for i in id_tuples]
@@ -148,7 +155,7 @@ class _QueryProxy(flask_sqlalchemy.BaseQuery):
             # be a query.
 
             # XXX is this efficient?
-            return self.filter('null')
+            return self.filter(sqlalchemy.text('null'))
 
         f = self.filter(getattr(self._modelclass,
                                 self._primary_key_name).in_(result_set))
@@ -162,11 +169,11 @@ class _Searcher(object):
     ''' Assigned to a Model class as ``pure_search``, which enables
     text-querying to whoosh hit list. Also used by ``query.whoosh_search``'''
 
-    def __init__(self, primary, indx):
+    def __init__(self, primary, index):
         self.primary_key_name = primary
-        self._index = indx
-        self.searcher = indx.searcher()
-        self._all_fields = list(set(indx.schema._fields.keys()) -
+        self._index = index
+        self.searcher = index.searcher()
+        self._all_fields = list(set(index.schema._fields.keys()) -
                                 set([self.primary_key_name]))
 
     def __call__(self, query, limit=None, fields=None, or_=False):
@@ -187,6 +194,7 @@ def whoosh_index(app, model):
     # A dict of model -> whoosh index is added to the ``app`` variable.
 
     if app.config.get('WHOOSH_DISABLED') is True:
+        logging.info('Whoosh has been disabled!')
         return
     if not hasattr(app, 'whoosh_indexes'):
         app.whoosh_indexes = {}
@@ -230,15 +238,15 @@ def _create_index(app, model):
     schema, primary_key = _get_whoosh_schema_and_primary_key(model, analyzer)
 
     if whoosh.index.exists_in(wi):
-        indx = whoosh.index.open_dir(wi)
+        index = whoosh.index.open_dir(wi)
     else:
         if not os.path.exists(wi):
             os.makedirs(wi)
-        indx = whoosh.index.create_in(wi, schema)
+        index = whoosh.index.create_in(wi, schema)
 
-    app.whoosh_indexes[model.__name__] = indx
+    app.whoosh_indexes[model.__name__] = index
     app.whoosh_models[model.__name__] = model
-    model.pure_whoosh = _Searcher(primary_key, indx)
+    model.pure_whoosh = _Searcher(primary_key, index)
     model.whoosh_primary_key = primary_key
 
     # change the query class of this model to our own
@@ -251,37 +259,41 @@ def _create_index(app, model):
     else:
         model.query_class = _QueryProxy
 
-    return indx
+    return index
 
 
 def _get_whoosh_schema_and_primary_key(model, analyzer):
     schema = {}
     primary = None
     searchable = set(model.__searchable__)
-
-    for field in model.__table__.columns:
+    columns = model.__table__.columns
+    parent_columns = model.__base__.__table__.columns if hasattr(
+        model.__base__, '__table__') else []
+    for field in columns:
         if field.primary_key:
             schema[field.name] = whoosh.fields.ID(stored=True, unique=True)
             primary = field.name
-
-        if field.name in searchable and isinstance(field.type,
-                                                   (sqlalchemy.types.Text,
-                                                    sqlalchemy.types.String,
-                                                    sqlalchemy.types.Unicode)):
-            schema[field.name] = whoosh.fields.TEXT(
-                analyzer=analyzer, vector=True)
-
-    for parent_class in model.__bases__:
-        if hasattr(parent_class, "_sa_class_manager"):
-            if parent_class.__searchable__:
-                for i in set(parent_class.__searchable__):
-                    if hasattr(parent_class, i):
-                        schema[i] = whoosh.fields.TEXT(
-                            analyzer=analyzer, vector=True)
-
+    for name in searchable:
+        try:
+            if name in columns:
+                attr = columns.get(name).type
+            elif name in parent_columns:
+                attr = parent_columns.get(name).type
+            else:
+                attr = getattr(model, name)
+            if isinstance(attr, (sqlalchemy.types.Text,
+                                 sqlalchemy.types.String,
+                                 sqlalchemy.types.Unicode,
+                                 property)):
+                schema[name] = whoosh.fields.TEXT(
+                    analyzer=analyzer, vector=True)
+        except AttributeError:
+            logging.warning('{0} does not have {1} field {2}'
+                            .format(model.__name__, __searchable__, name))
     return Schema(**schema), primary
 
 
+@flask_sqlalchemy.models_committed.connect
 def _after_flush(app, changes):
     # Any db updates go through here. We check if any of these models have
     # ``__searchable__`` fields, indicating they need to be indexed. With these
@@ -297,57 +309,114 @@ def _after_flush(app, changes):
         if hasattr(change[0].__class__, __searchable__):
             bytype.setdefault(change[0].__class__.__name__, []).append(
                 (update, change[0]))
-
-    for model, values in bytype.items():
-        index = whoosh_index(app, values[0][1].__class__)
-        with AsyncWriter(index) as writer:
-            primary_field = values[0][1].pure_whoosh.primary_key_name
-            searchable = values[0][1].__searchable__
-
-            for update, v in values:
-                if update:
-                    attrs = {}
-                    for key in searchable:
-                        try:
-                            attrs[key] = unicode(getattr(v, key))
-                        except AttributeError:
-                            raise AttributeError(
-                                '{0} does not have {1} field {2}'
-                                    .format(model, __searchable__, key))
-
-                    attrs[primary_field] = unicode(getattr(v, primary_field))
-                    writer.update_document(**attrs)
-                else:
-                    writer.delete_by_term(
-                        primary_field, unicode(getattr(v, primary_field)))
+    if not bytype:
+        return
+    try:
+        for model, values in bytype.items():
+            index = whoosh_index(app, values[0][1].__class__)
+            with index.writer() as writer:
+                for update, v in values:
+                    has_parent = isinstance(
+                        v.__class__.__base__, DeclarativeMeta)
+                    index_one_record(
+                        v, not update, writer, index_parent=has_parent)
+    except Exception as ex:
+        logging.warning("FAIL updating index of %s msg: %s" % (model, str(ex)))
 
 
-flask_sqlalchemy.models_committed.connect(_after_flush)
+def index_one_record(record, delete=False, writer=None, index_parent=False):
+    index = whoosh_index(current_app, record.__class__)
+    close = False
+    if not writer:
+        writer = index.writer()
+        close = True
+    if index_parent:
+        # index parent class
+        parent_writer = whoosh_index(
+            current_app, record.__class__.__base__).writer()
+    primary_field = record.pure_whoosh.primary_key_name
+    searchable = index.schema.names()
+    if not delete:
+        attrs = {}
+        for key in searchable:
+            attrs[key] = unicode(getattr(record, key))
+        attrs[primary_field] = unicode(
+            getattr(record, primary_field))
+        writer.update_document(**attrs)
+        if index_parent:
+            parent_writer.update_document(**attrs)
+    else:
+        writer.delete_by_term(
+            primary_field, unicode(getattr(record, primary_field)))
+        if index_parent:
+            parent_writer.delete_by_term(
+                primary_field, unicode(getattr(record, primary_field)))
+    if close:
+        writer.commit()
+
+
+def index_one_model(model):
+    index = whoosh_index(current_app, model)
+    with index.writer() as writer:
+        all_model = model.query.enable_eagerloads(False).yield_per(100)
+        for record in all_model:
+            index_one_record(record, writer=writer)
+
+
+def whoosh_index_all(app):
+    """
+    app -> [indexes]
+    """
+    all_models = app.extensions[
+        'sqlalchemy'].db.Model._decl_class_registry.values()
+    models = [i for i in all_models if hasattr(i, '__searchable__')]
+    return [(m, whoosh_index(app, m)) for m in models]
 
 
 def index_all(app):
     """
     Index all records in database.
     """
-    all_modles = app.extensions[
-        'sqlalchemy'].db.Model._decl_class_registry.values()
-    models = [i for i in all_modles if hasattr(i, '__searchable__')]
-    idxs = [(m, whoosh_index(app, m)) for m in models]
-    for model, idx in idxs:
-        print("Indexing %s...\t\t" % model.__name__, end='')
-        with idx.writer() as writer:
-            primary_field = model.pure_whoosh.primary_key_name
-            searchable = model.__searchable__
-            all = model.query.all()
-            for v in all:
-                attrs = {}
-                for key in searchable:
-                    try:
-                        attrs[key] = unicode(getattr(v, key))
-                    except AttributeError:
-                        raise AttributeError(
-                            '{0} does not have {1} field {2}'
-                                .format(model, __searchable__, key))
-                attrs[primary_field] = unicode(getattr(v, primary_field))
-                writer.update_document(**attrs)
-        print("done")
+    from datetime import datetime
+    start = datetime.now()
+    for model, _ in whoosh_index_all(app):
+        # import wdb; wdb.set_trace()
+        print("Indexing %s...%s" %
+              (model.__name__, ' ' * (25 - len(model.__name__))), end='')
+        sys.stdout.flush()
+        before = datetime.now()
+        index_one_model(model)
+        print("done\t%ss" % (datetime.now() - before).seconds)
+    print(' ' * 37 + 'total\t%ss' % (datetime.now() - start).seconds)
+
+
+class WhooshDisabled(object):
+    """
+    Disable whoosh indexing temporarily
+
+    usage:
+    ::
+        with WhooshDisabled():
+            do sth.
+    """
+
+    def __init__(self):
+        self.app = current_app
+        self._default_state = self._get_default_state()
+
+    def _get_default_state(self):
+        return self.app.config.get('WHOOSH_DISABLED', False)
+
+    def __enter__(self):
+        self.app.config['WHOOSH_DISABLED'] = True
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.app.config['WHOOSH_DISABLED'] = self._default_state
+
+
+def init_app(app):
+    app.config.setdefault('WHOOSH_DISABLED', False)
+    if app.config['WHOOSH_DISABLED']:
+        flask_sqlalchemy.models_committed.disconnect(_after_flush)
+    else:
+        whoosh_index_all(app)
