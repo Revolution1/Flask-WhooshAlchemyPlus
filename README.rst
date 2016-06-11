@@ -131,9 +131,10 @@ WhooshDisabled context manager
 
 To disable whoosh indexing temporarily:
 
-    ::
-        with WhooshDisabled():
-            do sth.
+::
+
+    with WhooshDisabled():
+        do sth.
 
 
 CHANGELOG
