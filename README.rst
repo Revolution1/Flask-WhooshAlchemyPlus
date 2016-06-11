@@ -1,6 +1,8 @@
 Welcome to Flask-WhooshAlchemyPlus!
 ===================================
 
+Forked from `gyllstromk/Flask-WhooshAlchemy <https://github.com/gyllstromk/Flask-WhooshAlchemy>`_
+
 Flask-WhooshAlchemyPlus is a Flask extension that integrates the text-search functionality of `Whoosh <https://bitbucket.org/mchaput/whoosh/wiki/Home>`_ with the ORM of `SQLAlchemy <http://www.sqlalchemy.org/>`_ for use in `Flask <http://flask.pocoo.org/>`_ applications.
 
 Source code and issue tracking at `GitHub <https://github.com/Revolution1/Flask-WhooshAlchemyPlus>`_.
@@ -43,6 +45,8 @@ Let's set up the environment and create our model:
       title = app.db.Column(app.db.Unicode)  # Indexed fields are either String,
       content = app.db.Column(app.db.Text)   # Unicode, or Text
       created = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    flask_whooshalchemyplus.init_app(app)    # initialize
 
 Only two steps to get started:
 
@@ -121,6 +125,15 @@ pure_whoosh
 If you want the ``whoosh.index.searcher().search()`` result::
 
     results =  BlogPost.pure_whoosh(self, query, limit=None, fields=None, or_=False)
+
+WhooshDisabled context manager
+------------------------------
+
+To disable whoosh indexing temporarily:
+
+    ::
+        with WhooshDisabled():
+            do sth.
 
 
 CHANGELOG
