@@ -223,7 +223,7 @@ def _create_index(app, model):
     # -> whoosh.TEXT.
 
     if not app.config.get('WHOOSH_BASE'):
-        # XXX todo: is there a better approach to handle the absenSe of a
+        # XXX todo: is there a better approach to handle the absence of a
         # config value for whoosh base? Should we throw an exception? If
         # so, this exception will be thrown in the after_commit function,
         # which is probably not ideal.
