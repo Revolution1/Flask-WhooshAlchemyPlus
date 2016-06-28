@@ -38,7 +38,7 @@ try:
 except NameError:
     unicode = str
 
-__version__ = '0.7.4'
+__version__ = '0.7.3'
 
 __searchable__ = '__searchable__'
 
@@ -223,7 +223,7 @@ def _create_index(app, model):
     # -> whoosh.TEXT.
 
     if not app.config.get('WHOOSH_BASE'):
-        # XXX todo: is there a better approach to handle the absence of a
+        # XXX todo: is there a better approach to handle the absenSe of a
         # config value for whoosh base? Should we throw an exception? If
         # so, this exception will be thrown in the after_commit function,
         # which is probably not ideal.
@@ -317,7 +317,8 @@ def _after_flush(app, changes):
             with index.writer() as writer:
                 for update, v in values:
                     has_parent = isinstance(
-                        v.__class__.__base__, DeclarativeMeta)
+                        v.__class__.__base__, DeclarativeMeta) and \
+                                 hasattr(v.__class__.__base__, '__searchable__')
                     index_one_record(
                         v, not update, writer, index_parent=has_parent)
     except Exception as ex:
