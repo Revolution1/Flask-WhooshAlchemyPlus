@@ -140,6 +140,13 @@ To disable whoosh indexing temporarily:
 CHANGELOG
 ---------
 
+- v0.7.5 :
+  
+  - feature: add WhooshDisabled context manager
+  - feature: add whoosh_index_all and init_app method
+  - refactory: indexing methods
+  - fix: index error: model has no attribute '__searchable__'
+
 - v0.7.4 :
 
   - Feature: add fuzzy-searching using SQL LIKE

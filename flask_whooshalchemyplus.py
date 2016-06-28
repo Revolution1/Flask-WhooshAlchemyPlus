@@ -38,7 +38,7 @@ try:
 except NameError:
     unicode = str
 
-__version__ = '0.7.3'
+__version__ = '0.7.5'
 
 __searchable__ = '__searchable__'
 
@@ -322,7 +322,7 @@ def _after_flush(app, changes):
                     index_one_record(
                         v, not update, writer, index_parent=has_parent)
     except Exception as ex:
-        logging.warning("FAIL updating index of %s msg: %s" % (model, str(ex)))
+        logging.error("FAIL updating index of %s msg: %s" % (model, str(ex)))
 
 
 def index_one_record(record, delete=False, writer=None, index_parent=False):
