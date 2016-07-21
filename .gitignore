@@ -13,3 +13,4 @@ env
 include
 lib
 src
+VENV/

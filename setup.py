@@ -5,10 +5,25 @@ Flask-WhooshAlchemy
 Whoosh extension to Flask/SQLAlchemy
 """
 
-from setuptools import setup
 import os
-
 from flask_whooshalchemyplus import __version__ as VERSION
+from setuptools import setup
+
+SRC_PATH = os.path.dirname(__file__)
+
+
+def get_requirements():
+    with open(os.path.join(SRC_PATH, 'requirements.txt')) as f:
+        return [x.strip() for x in f.readlines()]
+
+
+def get_readme():
+    with open(os.path.join(SRC_PATH, 'README.rst')) as f:
+        return f.read()
+
+
+REQUIRES = get_requirements()
+README = get_readme()
 
 setup(
     name='Flask-WhooshAlchemyPlus',
@@ -17,16 +32,17 @@ setup(
     license='BSD',
     author='Revolution1',
     author_email='crj93106@gmail.com',
+    maintainer='Revolution1',
+    maintainer_email='crj93106@gmail.com',
     description='Whoosh extension to Flask/SQLAlchemy',
-    long_description=open(os.path.join(os.path.dirname(__file__), 'README.rst')).read(),
-
+    long_description=README,
     py_modules=['flask_whooshalchemyplus'],
+    provides=['flask_whooshalchemyplus'],
     zip_safe=False,
     include_package_data=True,
     platforms='any',
-    install_requires=[x.strip() for x in
-        open(os.path.join(os.path.dirname(__file__),
-            'requirements.txt'))],
+    install_requires=REQUIRES,
+    requires=REQUIRES,
     tests_require=['Flask-Testing'],
 
     classifiers=[
