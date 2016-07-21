@@ -6,10 +6,17 @@ Whoosh extension to Flask/SQLAlchemy
 """
 
 import os
-from flask_whooshalchemyplus import __version__ as VERSION
 from setuptools import setup
 
 SRC_PATH = os.path.dirname(__file__)
+
+
+def get_version():
+    with open(os.path.join(SRC_PATH, 'flask_whooshalchemyplus.py')) as f:
+        for l in f.readlines():
+            if l.startswith('__version__'):
+                exec (l)
+                return locals().get('__version__')
 
 
 def get_requirements():
@@ -22,6 +29,7 @@ def get_readme():
         return f.read()
 
 
+VERSION = get_version()
 REQUIRES = get_requirements()
 README = get_readme()
 
