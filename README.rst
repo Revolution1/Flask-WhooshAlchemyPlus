@@ -162,7 +162,7 @@ CHANGELOG
 - v0.7.1 :
 
   - Feature: Indexing child module class `github issue #43 <https://github.com/gyllstromk/Flask-WhooshAlchemy/pull/43>`_
-  - Feature: Add python3 supprot
+  - Feature: Add python3 support
   - Fix: Obey result sorting if caller explicitly uses order_by() on query `github pull request #32 <https://github.com/gyllstromk/Flask-WhooshAlchemy/pull/32>`_
   - Fix: custom query_class usage `github pull request #35 <https://github.com/gyllstromk/Flask-WhooshAlchemy/pull/35>`_
   - Feature: add ``WHOOSH_DISABLED`` option to disable whooshalchemyplus at runtime
