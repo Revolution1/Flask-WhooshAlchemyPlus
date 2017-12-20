@@ -114,9 +114,9 @@ By default, results will only be returned if they contain all of the query terms
 
 If you want ordinary text matching result too::
 
-    results =  BlogPost.query.whoosh_search('cool', like=True)
+    results =  BlogPost.query.whoosh_search('cool', like=True, case_sensitive=True)
 
-This acts like ``whoosh_search('cool') + SQL LIKE '%cool%'``
+This acts like ``whoosh_search('cool') + SQL LIKE '%cool%'`` or ``whoosh_search('cool') + SQL ILIKE '%cool%'``
 
 
 pure_whoosh
@@ -139,6 +139,9 @@ To disable whoosh indexing temporarily:
 
 CHANGELOG
 ---------
+- v0.7.6 :
+
+  - feature: add to fuzzy-searching 'case_sensitive' param
 
 - v0.7.5 :
   
