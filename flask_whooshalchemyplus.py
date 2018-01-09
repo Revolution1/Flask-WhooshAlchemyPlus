@@ -38,7 +38,7 @@ try:
 except NameError:
     unicode = str
 
-__version__ = '0.7.5'
+__version__ = '0.7.6'
 
 __searchable__ = '__searchable__'
 
@@ -93,7 +93,7 @@ class _QueryProxy(flask_sqlalchemy.BaseQuery):
         return _inner()
 
     def whoosh_search(self, query, limit=None,
-                      fields=None, or_=False, like=False):
+                      fields=None, or_=False, like=False, case_sensitive=True):
         '''
 
         Execute text query on database. Results have a text-based
@@ -138,7 +138,10 @@ class _QueryProxy(flask_sqlalchemy.BaseQuery):
             for clm in set(fields) - {self._primary_key_name}:
                 attr = getattr(self._modelclass, clm)
                 if isinstance(attr, InstrumentedAttribute):
-                    query_colums.append(attr.like(u'%{}%'.format(query)))
+                    if case_sensitive:
+                        query_colums.append(attr.like(u'%{}%'.format(query)))
+                    else:
+                        query_colums.append(attr.ilike(u'%{}%'.format(query)))
             id_tuples = self.filter(sqlalchemy.or_(*query_colums)) \
                 .with_entities(self._primary_key_name).all()
             ids = [unicode(i[0]) for i in id_tuples]
