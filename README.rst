@@ -1,3 +1,10 @@
+Archived!
+=========
+
+Whoosh is a quite outdated project, this repo too.
+Please choose some more matured full-text search engine for your project.
+Like ElasticSearch or database (mysql,pgsql,sqlite) built-in full-text indexer.
+
 Welcome to Flask-WhooshAlchemyPlus!
 ===================================
 
